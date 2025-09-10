@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import "./ChatPanel.css";
+import Avatar from "../../assets/3DAvatar.png";
 
 // Static chat panel UI for Mail Insights assistant
 // Props:
@@ -225,8 +226,11 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
             ? "bg-indigo-600 text-white rounded-br-none"
             : "bg-white text-gray-800 border border-gray-200 rounded-bl-none";
           return (
-            <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-              <div className={`relative max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-lg text-sm shadow whitespace-pre-wrap ${bubbleBase}`}>
+              <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"} items-start gap-2`}>
+                {!isUser && (
+                  <img src={Avatar} alt="Assistant" className="w-8 h-8 rounded-full object-cover shadow mt-0.5" />
+                )}
+                <div className={`relative max-w-[75%] sm:max-w-[65%] px-3 py-2 rounded-lg text-sm shadow whitespace-pre-wrap ${bubbleBase} ${!isUser ? 'mt-0.5' : ''}`}>
                 {m.loading ? (
                   <span className="inline-flex items-center" aria-label={m.loading === "overview" ? "Loading insights" : "Generating answer"}>
                     <span className="sr-only">
@@ -242,6 +246,9 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
                   m.text
                 )}
               </div>
+                {/* {isUser && (
+                  <img src={Avatar} alt="You" className="w-8 h-8 rounded-full object-cover shadow" />
+                )} */}
             </div>
           );
         })}
@@ -269,7 +276,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
             {sending ? "Sending…" : "Send"}
           </button>
         </div>
-        
+
         {/* {category ? (
           <p className="mt-2 text-[11px] text-gray-500">Connected to Mail Insights • Category: {category}</p>
         ) : null} */}
