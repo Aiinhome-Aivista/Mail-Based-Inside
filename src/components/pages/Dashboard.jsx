@@ -479,6 +479,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Loader from "../common/Loader";
+import ChatPanel from "../common/ChatPanel";
 
 const defaultCategoryStyles = {
   Insurance: { bg: "bg-blue-500", icon: "🛡️" },
@@ -494,6 +495,11 @@ const Dashboard = () => {
   const [userName, setUserName] = useState("User");
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatTopic, setChatTopic] = useState(null); // { key, label, icon, count }
+  const [chatInsights, setChatInsights] = useState([]);
+  const [userCreds, setUserCreds] = useState({ email: "", password: "" });
+  const [sidebarOpen, setSidebarOpen] = useState(false); // collapsed by default
 
   const navigate = useNavigate();
   useEffect(() => {
@@ -503,6 +509,7 @@ const Dashboard = () => {
     if (storedData && userPassword) {
       const parsedData = JSON.parse(storedData);
       const userEmail = parsedData?.email;
+      setUserCreds({ email: userEmail || "", password: userPassword || "" });
 
       if (parsedData?.username) setUserName(parsedData.username);
 
@@ -547,6 +554,47 @@ const Dashboard = () => {
     return acc;
   }, {});
 
+  // Helpers to open chat with context
+  const openChatForTotal = () => {
+    const topSenders = (dashboardData?.summary?.top_senders || []).slice(0, 3);
+    const insights = [
+      `${totalEmails} total messages`,
+      ...topSenders.map((s) => `Top sender: ${s.sender || s.name || s}`),
+      dueItems?.length ? `${dueItems.length} upcoming due items` : "No due items detected",
+    ];
+  setChatTopic({ key: "all", label: "All Emails", icon: "📧", count: totalEmails });
+    setChatInsights(insights.filter(Boolean));
+    setChatOpen(true);
+  };
+
+  const openChatForCategory = async (cat) => {
+    const emails = emailsByCategory[cat] || [];
+    // simple frequency map for senders
+    const senderCounts = emails.reduce((acc, e) => {
+      const k = e.from || e.sender || "Unknown";
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    const topSender = Object.entries(senderCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 1)
+      .map(([name, count]) => `${name} (${count})`)[0];
+    const soonestDue = emails
+      .filter((e) => e.due_date)
+      .map((e) => e.due_date)
+      .sort()[0];
+    const style = defaultCategoryStyles[cat] || defaultCategoryStyles.Unknown;
+    const count = cat === "Garbage" ? garbageCount : categoryCounts[cat] || emails.length;
+  let insights = [
+      `${count} messages in ${cat}`,
+      topSender ? `Top sender: ${topSender}` : null,
+      soonestDue ? `Soonest due: ${soonestDue}` : null,
+    ];
+    setChatTopic({ key: cat.toLowerCase(), label: cat, icon: style.icon, count });
+    setChatInsights(insights.filter(Boolean));
+    setChatOpen(true);
+  };
+
   const handleLogout = () => {
     sessionStorage.clear(); // Clear session
     navigate("/"); // Redirect to login page
@@ -554,8 +602,17 @@ const Dashboard = () => {
   return (
     <div className="bg-gray-100 min-h-screen">
       {/* Header */}
-      <header className="fixed top-0 left-0 w-full bg-indigo-600 text-white py-4 px-6 flex justify-between items-center shadow-md z-50">
-        <h1 className="text-xl font-semibold">Agentic AI Dashboard</h1>
+      <header className="fixed top-0 left-0 w-full bg-indigo-600 text-white py-4 px-4 sm:px-6 flex justify-between items-center shadow-md z-50">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            aria-label={sidebarOpen ? "Collapse navigation" : "Expand navigation"}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-indigo-500/60 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-white/50 transition"
+          >
+            <span className="text-lg">{sidebarOpen ? '✕' : '☰'}</span>
+          </button>
+            <h1 className="text-xl font-semibold whitespace-nowrap">Agentic AI Dashboard</h1>
+        </div>
         <div className="flex items-center space-x-4">
           <span className="font-medium">Welcome, {userName}</span>
           <button className="bg-white text-indigo-600 px-3 py-1 rounded hover:bg-indigo-100" onClick={handleLogout}>
@@ -566,7 +623,12 @@ const Dashboard = () => {
 
       <div className="flex pt-20 pb-16">
         {/* Sidebar */}
-        <aside className="w-64 bg-white shadow-md p-4 fixed top-16 bottom-16 overflow-y-auto">
+        <aside
+          className={`fixed top-16 bottom-16 overflow-y-auto bg-white shadow-md border-r border-gray-100 p-4 transition-all duration-300 z-40
+            ${sidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full'}
+          `}
+          aria-hidden={!sidebarOpen}
+        >
           <nav className="space-y-2">
             <button
               onClick={() => setActiveSection("dashboard")}
@@ -593,12 +655,17 @@ const Dashboard = () => {
         </aside>
 
         {/* Main Section */}
-        <main className="flex-1 ml-64 p-6 overflow-y-auto">
+        <main className={`flex-1 p-6 overflow-y-auto transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>        
           {activeSection === "dashboard" && (
             <div className="space-y-6">
               {/* Top Summary Cards */}
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                <div className="bg-indigo-700 text-white p-4 rounded-lg shadow-lg text-center">
+                <div
+                  className="bg-indigo-700 text-white p-4 rounded-lg shadow-lg text-center cursor-pointer hover:opacity-95"
+                  onClick={openChatForTotal}
+                  role="button"
+                  aria-label="Open chat for All Emails"
+                >
                   <div className="text-2xl">📧</div>
                   <h3 className="text-2xl font-bold mt-1">{totalEmails}</h3>
                   <p>Total Emails</p>
@@ -611,7 +678,10 @@ const Dashboard = () => {
                   return (
                     <div
                       key={cat}
-                      className={`${style.bg} text-white p-4 rounded-lg shadow-lg text-center`}
+                      className={`${style.bg} text-white p-4 rounded-lg shadow-lg text-center cursor-pointer hover:opacity-95`}
+                      onClick={() => openChatForCategory(cat)}
+                      role="button"
+                      aria-label={`Open chat for ${cat}`}
                     >
                       <div className="text-2xl">{style.icon}</div>
                       <h3 className="text-2xl font-bold mt-1">{count}</h3>
@@ -621,50 +691,20 @@ const Dashboard = () => {
                 })}
               </div>
 
-              {/* Upcoming Due Items */}
-              {dueItems?.length > 0 && (
-                <div className="bg-white rounded-lg shadow-lg p-4">
-                  <h2 className="text-lg font-semibold mb-3">Upcoming Due Items</h2>
-                  <ul className="space-y-2">
-                    {dueItems.map((item) => (
-                      <li key={item.id} className="p-2 bg-yellow-100 rounded text-sm">
-                        <p className="font-medium text-indigo-600">{item.subject}</p>
-                        <p className="text-xs text-gray-600">Due: {item.due_date}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {/* Inline Chat Panel (opens below the cards) */}
+              {chatOpen && (
+                <ChatPanel
+                  open={chatOpen}
+                  onClose={() => setChatOpen(false)}
+                  topic={chatTopic}
+                  // insights={chatInsights}
+                  email={userCreds.email}
+                  password={userCreds.password}
+                  category={chatTopic?.key !== "all" ? chatTopic?.label : undefined}
+                />
               )}
 
-              {/* Category Emails Preview */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {categories.map((cat) => {
-                  const style = defaultCategoryStyles[cat] || defaultCategoryStyles.Unknown;
-                  const emails = emailsByCategory[cat];
-                  return (
-                    <div key={cat} className="bg-white rounded-lg p-4 shadow-lg">
-                      <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
-                        <span>{style.icon}</span> {cat}
-                        <span className="ml-auto bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs">
-                          {emails?.length || 0}
-                        </span>
-                      </h2>
-                      <div className="space-y-2">
-                        {emails?.length > 0 ? (
-                          emails.slice(0, 5).map((email) => (
-                            <div key={email.id} className="p-2 bg-gray-100 rounded text-sm">
-                              <p className="font-medium text-indigo-600">{email.subject}</p>
-                              <p className="text-xs text-gray-500">From: {email.from}</p>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-gray-500 text-sm">No results found</p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              {/* Lower preview cards intentionally hidden per requirement */}
             </div>
           )}
 
