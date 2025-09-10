@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import "./ChatPanel.css";
 
 // Static chat panel UI for Mail Insights assistant
 // Props:
@@ -7,7 +8,7 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 // - topic: { key: string, label: string, icon?: string, count?: number } | null
 // - insights: optional array of strings to show as quick facts
 // New props: email, password, category (string) used for API calls
-function ChatPanel({ open, onClose, topic, insights = [], email, password, category }) {
+function ChatPanel({ open, onClose, topic, insights = [], email, password, category, headerGradient }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState(() => {
     const label = topic?.label || "your emails";
@@ -80,7 +81,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
     setLoadingOverview(true);
     setMessages((prev) => [
       ...prev,
-      { id: typingId, role: "assistant", text: "Fetching insights…" },
+      { id: typingId, role: "assistant", loading: "overview" },
     ]);
 
     (async () => {
@@ -92,10 +93,10 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
         });
         const data = await res.json().catch(() => ({}));
         const text = formatOverview(data);
-        setMessages((prev) => prev.map((m) => (m.id === typingId ? { ...m, text } : m)));
+  setMessages((prev) => prev.map((m) => (m.id === typingId ? { ...m, text, loading: null } : m)));
       } catch (e) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === typingId ? { ...m, text: "I couldn\'t load insights right now. Please try again." } : m))
+          prev.map((m) => (m.id === typingId ? { ...m, text: "I couldn\'t load insights right now. Please try again.", loading: null } : m))
         );
       } finally {
         setLoadingOverview(false);
@@ -151,7 +152,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
     const typingId = `t-${Date.now() + 2}`;
     setMessages((prev) => [
       ...prev,
-      { id: typingId, role: "assistant", text: "Thinking…" },
+      { id: typingId, role: "assistant", loading: "thinking" },
     ]);
     setSending(true);
     try {
@@ -168,7 +169,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
           : "Sorry, I couldn't parse a response.";
       // Replace typing with real answer
       setMessages((prev) =>
-        prev.map((m) => (m.id === typingId ? { ...m, text: answer } : m))
+        prev.map((m) => (m.id === typingId ? { ...m, text: answer, loading: null } : m))
       );
     } catch (err) {
       setMessages((prev) =>
@@ -178,6 +179,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
                 ...m,
                 text:
                   "Request failed. Please try again. If this persists, there may be a network or server issue.",
+                loading: null,
               }
             : m
         )
@@ -190,7 +192,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
   return (
     <section className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 sm:px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+  <div className={`flex items-center justify-between px-4 sm:px-5 py-3 bg-gradient-to-r ${headerGradient || 'from-indigo-600 to-purple-600'} text-white`}>
         {headerTitle}
         <button
           onClick={onClose}
@@ -217,19 +219,32 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
 
       {/* Messages */}
       <div className="px-4 sm:px-5 py-4 max-h-80 overflow-y-auto space-y-3 bg-gray-50">
-        {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-lg text-sm shadow whitespace-pre-wrap ${
-                m.role === "user"
-                  ? "bg-indigo-600 text-white rounded-br-none"
-                  : "bg-white text-gray-800 border border-gray-200 rounded-bl-none"
-              }`}
-            >
-              {m.text}
+        {messages.map((m) => {
+          const isUser = m.role === "user";
+          const bubbleBase = isUser
+            ? "bg-indigo-600 text-white rounded-br-none"
+            : "bg-white text-gray-800 border border-gray-200 rounded-bl-none";
+          return (
+            <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+              <div className={`relative max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-lg text-sm shadow whitespace-pre-wrap ${bubbleBase}`}>
+                {m.loading ? (
+                  <span className="inline-flex items-center" aria-label={m.loading === "overview" ? "Loading insights" : "Generating answer"}>
+                    <span className="sr-only">
+                      {m.loading === "overview" ? "Loading insights" : "Generating answer"}
+                    </span>
+                    <span className="typing-dots">
+                      <span className={`dot bg-gradient-to-r ${headerGradient || 'from-indigo-500 to-indigo-600'}`}></span>
+                      <span className={`dot bg-gradient-to-r ${headerGradient || 'from-indigo-500 to-indigo-600'}`}></span>
+                      <span className={`dot bg-gradient-to-r ${headerGradient || 'from-indigo-500 to-indigo-600'}`}></span>
+                    </span>
+                  </span>
+                ) : (
+                  m.text
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={endRef} />
       </div>
 
@@ -254,9 +269,10 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
             {sending ? "Sending…" : "Send"}
           </button>
         </div>
-        {category ? (
+        
+        {/* {category ? (
           <p className="mt-2 text-[11px] text-gray-500">Connected to Mail Insights • Category: {category}</p>
-        ) : null}
+        ) : null} */}
       </div>
     </section>
   );

@@ -476,18 +476,19 @@
 
 
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Loader from "../common/Loader";
 import ChatPanel from "../common/ChatPanel";
 
+// Extended style map including gradient themes for fresh look
 const defaultCategoryStyles = {
-  Insurance: { bg: "bg-blue-500", icon: "🛡️" },
-  Healthcare: { bg: "bg-green-500", icon: "🏥" },
-  "EMI Alert": { bg: "bg-purple-500", icon: "💳" },
-  Promotion: { bg: "bg-yellow-500", icon: "🏷️" },
-  Garbage: { bg: "bg-gray-400", icon: "🗑️" },
-  Unknown: { bg: "bg-gray-500", icon: "📂" },
+  Insurance: { icon: "🛡️", gradient: "from-blue-500 via-sky-500 to-cyan-500" },
+  Healthcare: { icon: "🏥", gradient: "from-emerald-500 via-teal-500 to-green-500" },
+  "EMI Alert": { icon: "💳", gradient: "from-purple-500 via-fuchsia-500 to-pink-500" },
+  Promotion: { icon: "🏷️", gradient: "from-amber-400 via-orange-500 to-red-400" },
+  Garbage: { icon: "🗑️", gradient: "from-gray-400 via-gray-500 to-gray-600" },
+  Unknown: { icon: "📂", gradient: "from-slate-500 via-slate-600 to-neutral-600" },
 };
 
 const Dashboard = () => {
@@ -541,6 +542,33 @@ const Dashboard = () => {
   // Add garbage as a separate category
   const categories = [...Object.keys(categoryCounts), "Garbage"];
 
+  // Build an extended style map so that any category not predefined gets a unique gradient
+  const categoryStyleMap = useMemo(() => {
+    const map = { ...defaultCategoryStyles };
+    const dynamicPalette = [
+      "from-rose-500 via-pink-500 to-fuchsia-500",
+      "from-indigo-500 via-blue-500 to-cyan-500",
+      "from-teal-500 via-emerald-500 to-green-500",
+      "from-amber-500 via-orange-500 to-red-500",
+      "from-sky-500 via-cyan-500 to-teal-500",
+      "from-purple-500 via-violet-500 to-indigo-500",
+      "from-lime-500 via-green-500 to-emerald-500",
+      "from-stone-500 via-zinc-500 to-neutral-600",
+    ];
+    let paletteIndex = 0;
+    categories.forEach((cat) => {
+      if (!map[cat]) {
+        map[cat] = {
+          icon: "📁",
+            // Assign next gradient ensuring different look for each missing category
+          gradient: dynamicPalette[paletteIndex % dynamicPalette.length],
+        };
+        paletteIndex++;
+      }
+    });
+    return map;
+  }, [categories]);
+
   const emailsByCategory = categories.reduce((acc, category) => {
     if (category === "Garbage") {
       acc[category] =
@@ -562,7 +590,7 @@ const Dashboard = () => {
       ...topSenders.map((s) => `Top sender: ${s.sender || s.name || s}`),
       dueItems?.length ? `${dueItems.length} upcoming due items` : "No due items detected",
     ];
-  setChatTopic({ key: "all", label: "All Emails", icon: "📧", count: totalEmails });
+    setChatTopic({ key: "all", label: "All Emails", icon: "📧", count: totalEmails, gradient: "from-indigo-600 via-violet-600 to-fuchsia-500" });
     setChatInsights(insights.filter(Boolean));
     setChatOpen(true);
   };
@@ -583,14 +611,14 @@ const Dashboard = () => {
       .filter((e) => e.due_date)
       .map((e) => e.due_date)
       .sort()[0];
-    const style = defaultCategoryStyles[cat] || defaultCategoryStyles.Unknown;
+  const style = categoryStyleMap[cat] || categoryStyleMap.Unknown;
     const count = cat === "Garbage" ? garbageCount : categoryCounts[cat] || emails.length;
   let insights = [
       `${count} messages in ${cat}`,
       topSender ? `Top sender: ${topSender}` : null,
       soonestDue ? `Soonest due: ${soonestDue}` : null,
     ];
-    setChatTopic({ key: cat.toLowerCase(), label: cat, icon: style.icon, count });
+  setChatTopic({ key: cat.toLowerCase(), label: cat, icon: style.icon, count, gradient: style.gradient || "from-slate-500 to-slate-600" });
     setChatInsights(insights.filter(Boolean));
     setChatOpen(true);
   };
@@ -661,10 +689,7 @@ const Dashboard = () => {
               {/* Top Summary Cards */}
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 <div
-                  className="bg-indigo-700 text-white p-4 rounded-lg shadow-lg text-center cursor-pointer hover:opacity-95"
-                  onClick={openChatForTotal}
-                  role="button"
-                  aria-label="Open chat for All Emails"
+                  className="bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-500 text-white p-4 rounded-xl shadow-lg text-center select-none"
                 >
                   <div className="text-2xl">📧</div>
                   <h3 className="text-2xl font-bold mt-1">{totalEmails}</h3>
@@ -672,13 +697,13 @@ const Dashboard = () => {
                 </div>
 
                 {categories.map((cat) => {
-                  const style = defaultCategoryStyles[cat] || defaultCategoryStyles.Unknown;
+                  const style = categoryStyleMap[cat] || categoryStyleMap.Unknown;
                   const count =
                     cat === "Garbage" ? garbageCount : categoryCounts[cat] ?? 0;
                   return (
                     <div
                       key={cat}
-                      className={`${style.bg} text-white p-4 rounded-lg shadow-lg text-center cursor-pointer hover:opacity-95`}
+                      className={`bg-gradient-to-br ${style.gradient || 'from-slate-500 to-slate-600'} text-white p-4 rounded-xl shadow-lg text-center cursor-pointer hover:brightness-110 transition`}
                       onClick={() => openChatForCategory(cat)}
                       role="button"
                       aria-label={`Open chat for ${cat}`}
@@ -701,6 +726,7 @@ const Dashboard = () => {
                   email={userCreds.email}
                   password={userCreds.password}
                   category={chatTopic?.key !== "all" ? chatTopic?.label : undefined}
+                  headerGradient={chatTopic?.gradient}
                 />
               )}
 
@@ -714,7 +740,7 @@ const Dashboard = () => {
               activeSection === cat.toLowerCase() && (
                 <div key={cat}>
                   <h2 className="text-2xl font-semibold mb-4">
-                    {defaultCategoryStyles[cat]?.icon} {cat} Emails
+                    {categoryStyleMap[cat]?.icon} {cat} Emails
                   </h2>
                   {emailsByCategory[cat]?.length === 0 ? (
                     <p className="text-gray-700">No results found.</p>
