@@ -157,10 +157,10 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
     ]);
     setSending(true);
     try {
-      const res = await fetch("http://122.163.121.176:3006/chat-category", {
+      const res = await fetch("http://122.163.121.176:3006/chatcategory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, category, question: userText }),
+        body: JSON.stringify({ email, category, question: userText }),
       });
       const data = await res.json().catch(() => ({}));
       // Per requirement: bind 'answer' key specifically
