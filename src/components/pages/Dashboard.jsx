@@ -155,6 +155,32 @@ const Dashboard = () => {
     sessionStorage.clear(); // Clear session
     navigate("/"); // Redirect to login page
   };
+
+  // Reload mails trigger: calls readmails then refreshes analyze-mails; shows Loader during the process
+  const handleReload = async () => {
+    try {
+      const email = userCreds.email || JSON.parse(sessionStorage.getItem("userData") || "{}")?.email || "";
+      const password = userCreds.password || sessionStorage.getItem("userPassword") || "";
+      if (!email || !password) {
+        console.warn("Missing credentials for reload");
+        return;
+      }
+      setLoading(true);
+      const res = await fetch("http://122.163.121.176:3006/readmails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json().catch(() => (null));
+      if (data) {
+        setDashboardData(data);
+        if (data?.username) setUserName(data.username);
+      }
+    }
+    finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="bg-gray-100 min-h-screen">
       {/* Header */}
@@ -169,8 +195,29 @@ const Dashboard = () => {
           </button>
             <h1 className="text-xl font-semibold whitespace-nowrap">Agentic AI Dashboard</h1>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
           <span className="font-medium">Welcome, {userName}</span>
+          <button
+            onClick={handleReload}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20 text-white focus:outline-none focus:ring-2 focus:ring-white/50"
+            title="Reload mails"
+            aria-label="Reload mails"
+            disabled={loading}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}
+            >
+              <path d="M21 12a9 9 0 1 1-3-6.7" />
+              <polyline points="21 3 21 9 15 9" />
+            </svg>
+          </button>
           <button className="bg-white text-indigo-600 px-3 py-1 rounded hover:bg-indigo-100" onClick={handleLogout}>
             Logout
           </button>
