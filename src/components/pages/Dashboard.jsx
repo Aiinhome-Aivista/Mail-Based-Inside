@@ -151,6 +151,27 @@ const Dashboard = () => {
     setChatOpen(true);
   };
 
+  // Keep open chat panel's count in sync if data refresh changes counts
+  useEffect(() => {
+    if (!chatOpen || !chatTopic) return;
+    // Recalculate count based on latest dashboardData
+    if (chatTopic.key === 'all') {
+      const newTotal = dashboardData?.total_email_count || 0;
+      if (chatTopic.count !== newTotal) {
+        setChatTopic(prev => prev ? { ...prev, count: newTotal } : prev);
+      }
+    } else {
+      // match category by label (original label stored in chatTopic.label)
+      const catLabel = chatTopic.label;
+      if (catLabel) {
+        const newCount = categoryCounts[catLabel] ?? emailsByCategory[catLabel]?.length ?? 0;
+        if (typeof newCount === 'number' && chatTopic.count !== newCount) {
+          setChatTopic(prev => prev ? { ...prev, count: newCount } : prev);
+        }
+      }
+    }
+  }, [dashboardData, categoryCounts, emailsByCategory, chatOpen, chatTopic]);
+
   const handleLogout = () => {
     sessionStorage.clear(); // Clear session
     navigate("/"); // Redirect to login page
