@@ -8,7 +8,14 @@ import Avatar from "../../assets/3DAvatar.png";
 // - onClose: function to close panel
 // - topic: { key: string, label: string, icon?: string, count?: number } | null
 // - insights: optional array of strings to show as quick facts
-// New props: email, password, category (string) used for API calls
+// New props: email, password, category (string) used for API calls\
+function linkify(text) {
+    if (!text) return "";
+    const urlRegex = /((https?:\/\/)[^\s]+)/g;
+    return text.replace(urlRegex, (url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 underline hover:text-indigo-800">${url}</a>`;
+    });
+  }
 function ChatPanel({ open, onClose, topic, insights = [], email, password, category, headerGradient }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState(() => {
@@ -243,7 +250,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
                     </span>
                   </span>
                 ) : (
-                  m.text
+                 <span dangerouslySetInnerHTML={{ __html: linkify(m.text) }} />
                 )}
               </div>
                 {/* {isUser && (
