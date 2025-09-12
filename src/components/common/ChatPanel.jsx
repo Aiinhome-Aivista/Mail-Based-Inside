@@ -82,7 +82,8 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
     ]);
 
     // After the quick overview request, fetch category insights if possible
-    const shouldFetch = Boolean(email && password && category);
+  // Allow fetch for Google login: email + category sufficient (password optional)
+  const shouldFetch = Boolean(email && category);
     if (!shouldFetch) return;
 
     const typingId = `ov-${Date.now()}`;
@@ -141,7 +142,8 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
     setInput("");
 
     // If missing creds or category, show static reply
-    if (!email || !password || !category) {
+    // Allow chat if email + category, even if password absent (Google token handled server-side previously)
+    if (!email || !category) {
       setMessages((prev) => [
         ...prev,
         {
@@ -150,7 +152,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
           text:
             !category
               ? "Please select a category card (e.g., Healthcare, Insurance) to start a conversation. The Total Emails card is informational only."
-              : "I can't reach the server because credentials seem missing. Please log in again.",
+              : "I can't reach the server because your email context is missing. Please log in again.",
         },
       ]);
       return;

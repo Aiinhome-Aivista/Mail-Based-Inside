@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Loader from "../common/Loader";
 import ChatPanel from "../common/ChatPanel";
@@ -25,35 +25,46 @@ const Dashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false); // collapsed by default
 
   const navigate = useNavigate();
+  // Guard ref to avoid duplicate fetch in React 18 StrictMode (dev) double invoke
+  const initialFetchDoneRef = useRef(false);
   useEffect(() => {
+    if (initialFetchDoneRef.current) return; // prevent second StrictMode run
     const storedData = sessionStorage.getItem("userData");
     const userPassword = sessionStorage.getItem("userPassword");
+    if (!storedData) return;
+    const parsedData = JSON.parse(storedData);
+    const userEmail = parsedData?.email;
+    const accessToken = parsedData?.access_token; // present for Google login response
 
-    if (storedData && userPassword) {
-      const parsedData = JSON.parse(storedData);
-      const userEmail = parsedData?.email;
-      setUserCreds({ email: userEmail || "", password: userPassword || "" });
+    // Prefer explicit name fields from Google login (name) then username then email
+    if (parsedData?.name) setUserName(parsedData.name);
+    else if (parsedData?.username) setUserName(parsedData.username);
+    else if (userEmail) setUserName(userEmail.split('@')[0]);
 
-      if (parsedData?.username) setUserName(parsedData.username);
+    setUserCreds({ email: userEmail || "", password: userPassword || "" });
 
-      if (userEmail && userPassword) {
-        setLoading(true);
-        fetch("http://122.163.121.176:3006/readmails", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: userEmail, password: userPassword }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            console.log("Fetched dashboard data:", data);
-            setDashboardData(data);
-            setLoading(false);
-            if (data?.username) setUserName(data.username);
-          })
-          .catch((err) => console.error("API Error:", err))
-          .finally(() => setLoading(false));
-      }
-    }
+    // Determine auth mode: password-based (legacy) or Google token-based
+    if (!userEmail) return;
+    const payload = userPassword
+      ? { email: userEmail, password: userPassword }
+      : { email: userEmail, access_token: accessToken };
+
+  setLoading(true);
+  initialFetchDoneRef.current = true;
+    fetch("http://122.163.121.176:3006/readmails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      // body: JSON.stringify({}),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("Fetched dashboard data:", data);
+        setDashboardData(data);
+        if (data?.username) setUserName(data.username);
+      })
+      .catch((err) => console.error("API Error:", err))
+      .finally(() => setLoading(false));
   }, []);
 
   // const categoryCounts = dashboardData?.summary?.category_counts || {};
@@ -180,25 +191,28 @@ const Dashboard = () => {
   // Reload mails trigger: calls readmails then refreshes analyze-mails; shows Loader during the process
   const handleReload = async () => {
     try {
-      const email = userCreds.email || JSON.parse(sessionStorage.getItem("userData") || "{}")?.email || "";
+      const storedData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const email = userCreds.email || storedData.email || "";
       const password = userCreds.password || sessionStorage.getItem("userPassword") || "";
-      if (!email || !password) {
-        console.warn("Missing credentials for reload");
+      const accessToken = storedData.access_token;
+      if (!email) {
+        console.warn("Missing email for reload");
         return;
       }
+      const payload = password ? { email, password } : { email, access_token: accessToken };
       setLoading(true);
       const res = await fetch("http://122.163.121.176:3006/readmails", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(payload),
+        // body: JSON.stringify({email,password}),
       });
       const data = await res.json().catch(() => (null));
       if (data) {
         setDashboardData(data);
         if (data?.username) setUserName(data.username);
       }
-    }
-    finally {
+    } finally {
       setLoading(false);
     }
   };
