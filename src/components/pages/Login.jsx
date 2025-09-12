@@ -98,8 +98,8 @@ function Login() {
           </div>
 
           <div className="text-center mb-6 pt-8">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">AI Agent Assistant</h1>
-            <p className="text-gray-600 text-sm">Welcome back! Please sign in to your account</p>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">Agentic Email Assistant</h1>
+            <p className="text-gray-600 text-sm">Welcome back! Sign in to manage your emails efficiently</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
