@@ -16,24 +16,9 @@ function linkify(text) {
       return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 underline hover:text-indigo-800">${url}</a>`;
     });
   }
-function ChatPanel({ open, onClose, topic, insights = [], email, password, category, headerGradient }) {
+function ChatPanel({ open, onClose, topic, topicKey, messagesProp, onMessagesChange, insights = [], email, password, category, headerGradient }) {
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState(() => {
-    const label = topic?.label || "your emails";
-    return [
-      {
-        id: "m1",
-        role: "assistant",
-        text:
-          `Hello! I\'m your Mail Insights assistant. I\'ve loaded context for ${label}.`,
-      },
-      {
-        id: "m2",
-        role: "user",
-        text: "Give me a quick overview.",
-      },
-    ];
-  });
+  const [messages, setMessages] = useState(() => messagesProp && messagesProp.length ? messagesProp : []);
   const [sending, setSending] = useState(false);
   const [loadingOverview, setLoadingOverview] = useState(false);
 
@@ -65,53 +50,50 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
     }
   };
 
-  useEffect(() => {
-    // Reset starter thread when topic changes
-    const label = topic?.label || "your emails";
-    setMessages([
-      // {
-      //   id: "m1",
-      //   role: "assistant",
-      //   text: `Hello! I\'m your Mail Insights assistant. I\'ve loaded context for ${label}.`,
-      // },
-      // {
-      //   id: "m2",
-      //   role: "user",
-      //   text: "Give me a quick overview.",
-      // },
-    ]);
+  // Track previous topicKey to know when to re-hydrate
+  const prevTopicKeyRef = useRef();
 
-    // After the quick overview request, fetch category insights if possible
-  // Allow fetch for Google login: email + category sufficient (password optional)
-  const shouldFetch = Boolean(email && category);
-    if (!shouldFetch) return;
+  useEffect(() => {
+    const topicChanged = prevTopicKeyRef.current !== topicKey;
+    if (!topicChanged) return; // only react on actual topic change
+    prevTopicKeyRef.current = topicKey;
+
+    // Hydrate from persisted messages if available
+    if (messagesProp && messagesProp.length) {
+      setMessages(messagesProp);
+      return;
+    }
+
+    // Start a fresh conversation (empty) then optionally fetch overview
+    setMessages([]);
+    if (!(email && category)) return; // can't fetch without context
 
     const typingId = `ov-${Date.now()}`;
     setLoadingOverview(true);
-    setMessages((prev) => [
-      ...prev,
-      { id: typingId, role: "assistant", loading: "overview" },
-    ]);
+    setMessages(prev => [...prev, { id: typingId, role: 'assistant', loading: 'overview' }]);
 
     (async () => {
       try {
-        const res = await fetch("http://122.163.121.176:3006/category-insights", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, category }),
+        const res = await fetch('http://122.163.121.176:3006/category-insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, category })
         });
         const data = await res.json().catch(() => ({}));
         const text = formatOverview(data);
-  setMessages((prev) => prev.map((m) => (m.id === typingId ? { ...m, text, loading: null } : m)));
-      } catch (e) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === typingId ? { ...m, text: "I couldn\'t load insights right now. Please try again.", loading: null } : m))
-        );
+        setMessages(prev => prev.map(m => m.id === typingId ? { ...m, text, loading: null } : m));
+      } catch {
+        setMessages(prev => prev.map(m => m.id === typingId ? { ...m, text: 'I couldn\'t load insights right now. Please try again.', loading: null } : m));
       } finally {
         setLoadingOverview(false);
       }
     })();
-  }, [topic?.key, email, password, category]);
+  }, [topicKey, messagesProp, email, category]);
+
+  // Propagate message changes upward for persistence
+  useEffect(() => {
+    if (onMessagesChange && topicKey) onMessagesChange(messages);
+  }, [messages, onMessagesChange, topicKey]);
 
   const headerTitle = useMemo(() => {
     const icon = topic?.icon || "💬";
@@ -138,7 +120,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
     if (!input.trim()) return;
     const userText = input.trim();
     const userMsg = { id: `u-${Date.now()}`, role: "user", text: userText };
-    setMessages((prev) => [...prev, userMsg]);
+  setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
     // If missing creds or category, show static reply
@@ -148,11 +130,10 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
         ...prev,
         {
           id: `a-${Date.now() + 1}`,
-          role: "assistant",
-          text:
-            !category
-              ? "Please select a category card (e.g., Healthcare, Insurance) to start a conversation. The Total Emails card is informational only."
-              : "I can't reach the server because your email context is missing. Please log in again.",
+          role: 'assistant',
+          text: !category
+            ? 'Please select a category card (e.g., Healthcare, Insurance) to start a conversation.'
+            : 'I cannot reach the server because your email context is missing. Please log in again.',
         },
       ]);
       return;
@@ -178,9 +159,7 @@ function ChatPanel({ open, onClose, topic, insights = [], email, password, categ
           ? data.answer
           : "Sorry, I couldn't parse a response.";
       // Replace typing with real answer
-      setMessages((prev) =>
-        prev.map((m) => (m.id === typingId ? { ...m, text: answer, loading: null } : m))
-      );
+      setMessages((prev) => prev.map((m) => (m.id === typingId ? { ...m, text: answer, loading: null } : m)));
     } catch (err) {
       setMessages((prev) =>
         prev.map((m) =>

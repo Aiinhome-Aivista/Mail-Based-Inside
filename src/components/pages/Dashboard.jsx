@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Loader from "../common/Loader";
 import ChatPanel from "../common/ChatPanel";
@@ -18,11 +18,27 @@ const Dashboard = () => {
   const [userName, setUserName] = useState("User");
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Loading dashboard…');
   const [chatOpen, setChatOpen] = useState(false);
   const [chatTopic, setChatTopic] = useState(null); // { key, label, icon, count }
   const [chatInsights, setChatInsights] = useState([]);
+  // Persist chat sessions per topic key (e.g., 'all', 'insurance') across navigation
+  const [chatSessions, setChatSessions] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('chatSessions');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
   const [userCreds, setUserCreds] = useState({ email: "", password: "" });
   const [sidebarOpen, setSidebarOpen] = useState(false); // collapsed by default
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [categoryMails, setCategoryMails] = useState([]);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [categoryError, setCategoryError] = useState("");
+  const [activeCategoryMail, setActiveCategoryMail] = useState(null);
+  const [mailLoadingId, setMailLoadingId] = useState(null);
+  const [mailModalOpen, setMailModalOpen] = useState(false);
+  const [modalMail, setModalMail] = useState(null);
 
   const navigate = useNavigate();
   // Guard ref to avoid duplicate fetch in React 18 StrictMode (dev) double invoke
@@ -49,8 +65,9 @@ const Dashboard = () => {
       ? { email: userEmail, password: userPassword }
       : { email: userEmail, access_token: accessToken };
 
-  setLoading(true);
-  initialFetchDoneRef.current = true;
+    setLoading(true);
+    setLoadingMessage('Loading dashboard…');
+    initialFetchDoneRef.current = true;
     fetch("http://122.163.121.176:3006/readmails", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -72,10 +89,10 @@ const Dashboard = () => {
   // const garbageCount = dashboardData?.summary?.garbage_count || 0;
   // const dueItems = dashboardData?.summary?.upcoming_due_items || [];
 
- const categoryCounts = dashboardData?.category_counts || {};
- const totalEmails = dashboardData?.total_email_count || 0;
- const garbageCount = 0;
- const dueItems = [];
+  const categoryCounts = dashboardData?.category_counts || {};
+  const totalEmails = dashboardData?.total_email_count || 0;
+  const garbageCount = 0;
+  const dueItems = [];
 
   // Add garbage as a separate category
   // const categories = [...Object.keys(categoryCounts), "Garbage"];
@@ -99,7 +116,7 @@ const Dashboard = () => {
       if (!map[cat]) {
         map[cat] = {
           icon: "📁",
-            // Assign next gradient ensuring different look for each missing category
+          // Assign next gradient ensuring different look for each missing category
           gradient: dynamicPalette[paletteIndex % dynamicPalette.length],
         };
         paletteIndex++;
@@ -150,17 +167,31 @@ const Dashboard = () => {
       .filter((e) => e.due_date)
       .map((e) => e.due_date)
       .sort()[0];
-  const style = categoryStyleMap[cat] || categoryStyleMap.Unknown;
+    const style = categoryStyleMap[cat] || categoryStyleMap.Unknown;
     const count = cat === "Garbage" ? garbageCount : categoryCounts[cat] || emails.length;
-  let insights = [
+    let insights = [
       `${count} messages in ${cat}`,
       topSender ? `Top sender: ${topSender}` : null,
       soonestDue ? `Soonest due: ${soonestDue}` : null,
     ];
-  setChatTopic({ key: cat.toLowerCase(), label: cat, icon: style.icon, count, gradient: style.gradient || "from-slate-500 to-slate-600" });
+    setChatTopic({ key: cat.toLowerCase(), label: cat, icon: style.icon, count, gradient: style.gradient || "from-slate-500 to-slate-600" });
     setChatInsights(insights.filter(Boolean));
     setChatOpen(true);
   };
+
+  const handleChatMessagesChange = (topicKey, msgs) => {
+    setChatSessions(prev => {
+      const next = { ...prev, [topicKey]: msgs };
+      try { sessionStorage.setItem('chatSessions', JSON.stringify(next)); } catch {/* ignore */}
+      return next;
+    });
+  };
+
+  // Stable callback passed to ChatPanel to avoid re-triggering its persistence effect every render
+  const persistChatMessages = useCallback((msgs) => {
+    if (!chatTopic?.key) return;
+    handleChatMessagesChange(chatTopic.key, msgs);
+  }, [chatTopic?.key]);
 
   // Keep open chat panel's count in sync if data refresh changes counts
   useEffect(() => {
@@ -201,6 +232,7 @@ const Dashboard = () => {
       }
       const payload = password ? { email, password } : { email, access_token: accessToken };
       setLoading(true);
+      setLoadingMessage('Refreshing mails…');
       const res = await fetch("http://122.163.121.176:3006/readmails", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,6 +248,54 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  const fetchCategoryMails = (category) => {
+    if (!userCreds.email) return;
+    // Use global loader instead of inline spinner
+    setLoading(true);
+    setLoadingMessage(`Loading ${category} mails…`);
+    setCategoryError("");
+    setCategoryMails([]);
+    setActiveCategoryMail(null);
+    fetch('http://122.163.121.176:3006/get_mails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: userCreds.email, category })
+    })
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to fetch category mails');
+        return r.json();
+      })
+      .then(data => {
+        const mails = Array.isArray(data) ? data : (data?.mails || data?.emails || []);
+        setCategoryMails(mails);
+      })
+      .catch(err => {
+        console.error('Category fetch error:', err);
+        setCategoryError(err.message || 'Error fetching mails');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  // Handle selecting a mail card (stores active mail & brief loading state)
+  const handleSelectCategoryMail = (mail, idx) => {
+    setMailLoadingId(idx);
+    setActiveCategoryMail(mail);
+    // simulate tiny delay for loader feedback; clear quickly
+    setTimeout(() => setMailLoadingId(null), 150);
+  };
+
+  const openMailModal = (mail) => {
+    setModalMail(mail);
+    setMailModalOpen(true);
+  };
+  const closeMailModal = () => {
+    setMailModalOpen(false);
+    setModalMail(null);
+  };
+
   return (
     <div className="bg-gray-100 min-h-screen">
       {/* Header */}
@@ -228,7 +308,7 @@ const Dashboard = () => {
           >
             <span className="text-lg">{sidebarOpen ? '✕' : '☰'}</span>
           </button>
-            <h1 className="text-xl font-semibold whitespace-nowrap">Agentic AI Dashboard</h1>
+          <h1 className="text-xl font-semibold whitespace-nowrap">Agentic AI Dashboard</h1>
         </div>
         <div className="flex items-center space-x-3">
           <span className="font-medium">Welcome, {userName}</span>
@@ -280,7 +360,11 @@ const Dashboard = () => {
             {categories.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setActiveSection(cat.toLowerCase())}
+                onClick={() => {
+                  setActiveSection(cat.toLowerCase());
+                  setSelectedCategory(cat);
+                  fetchCategoryMails(cat); // always fetch on click
+                }}
                 className={`w-full text-left px-4 py-2 rounded ${activeSection === cat.toLowerCase()
                   ? "bg-indigo-600 text-white"
                   : "hover:bg-indigo-100"
@@ -293,7 +377,7 @@ const Dashboard = () => {
         </aside>
 
         {/* Main Section */}
-        <main className={`flex-1 p-6 overflow-y-auto transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>        
+        <main className={`flex-1 p-6 overflow-y-auto transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
           {activeSection === "dashboard" && (
             <div className="space-y-6">
               {/* Top Summary Cards */}
@@ -332,6 +416,9 @@ const Dashboard = () => {
                   open={chatOpen}
                   onClose={() => setChatOpen(false)}
                   topic={chatTopic}
+                  topicKey={chatTopic?.key}
+                  messagesProp={chatTopic?.key ? chatSessions[chatTopic.key] : undefined}
+                  onMessagesChange={persistChatMessages}
                   // insights={chatInsights}
                   email={userCreds.email}
                   password={userCreds.password}
@@ -344,33 +431,96 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Category-wise Full View */}
-          {categories.map(
-            (cat) =>
-              activeSection === cat.toLowerCase() && (
-                <div key={cat}>
-                  <h2 className="text-2xl font-semibold mb-4">
-                    {categoryStyleMap[cat]?.icon} {cat} Emails
-                  </h2>
-                  {emailsByCategory[cat]?.length === 0 ? (
-                    <p className="text-gray-700">No results found.</p>
-                  ) : (
-                    emailsByCategory[cat].map((email) => (
-                      <div key={email.id} className="p-3 mb-2 bg-gray-100 rounded">
-                        <p className="font-medium text-indigo-600">{email.subject}</p>
-                        <p className="text-xs text-gray-500">From: {email.from}</p>
-                        {email.due_date && (
-                          <p className="text-xs text-red-500">Due: {email.due_date}</p>
-                        )}
-                      </div>
-                    ))
-                  )}
+          {/* Removed legacy category-wise full view (now replaced by sidebar-driven fetch rendering below) */}
+
+          {activeSection !== 'dashboard' && selectedCategory && activeSection === selectedCategory.toLowerCase() && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-2xl font-semibold">{categoryStyleMap[selectedCategory]?.icon} {selectedCategory} Emails</h2>
+                <button onClick={() => { setSelectedCategory(''); setActiveSection('dashboard'); }} className="text-sm px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 text-gray-700">← Back to Dashboard</button>
+              </div>
+              {categoryLoading && (
+                <div className="flex items-center gap-2 text-sm text-indigo-600 mb-3">
+                  <div className="h-5 w-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                  Loading {selectedCategory} mails…
                 </div>
-              )
+              )}
+              {categoryError && !categoryLoading && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded">{categoryError}</div>
+              )}
+              {!categoryLoading && !categoryError && categoryMails.length === 0 && (
+                <p className="text-gray-600 text-sm">No mails found for {selectedCategory}.</p>
+              )}
+              {categoryMails.length > 0 && (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {categoryMails.map((m, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => { handleSelectCategoryMail(m, idx); openMailModal(m); }}
+                      className={`relative text-left bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow transition ${activeCategoryMail === m ? 'ring-2 ring-indigo-400' : ''}`}
+                    >
+                      <p className="text-sm font-semibold text-indigo-600 truncate" title={m.subject}>{m.subject || 'No Subject'}</p>
+                      <p className="text-[11px] text-gray-500 truncate" title={m.sender}>{m.sender || m.from || 'Unknown sender'}</p>
+                      <p className="mt-1 text-[12px] line-clamp-3 text-gray-600 whitespace-pre-wrap">{(m.body || '').replace(/\r\n/g, ' ').slice(0, 160) + (m.body && m.body.length > 160 ? '…' : '')}</p>
+                      {mailLoadingId === idx && (
+                        <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-lg">
+                          <div className="h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Inline selected mail preview removed per request; modal handles full view */}
+            </div>
           )}
         </main>
       </div>
-      <Loader show={loading} />
+
+      {mailModalOpen && modalMail && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" role="dialog" aria-modal="true">
+          <div className="relative w-full max-w-3xl max-h-[85vh] bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col">
+            <div className="flex items-start justify-between px-6 py-4 border-b bg-gradient-to-r from-indigo-600 to-violet-600 rounded-t-xl">
+              <div className="pr-6">
+                <h3 className="text-lg font-semibold text-white break-words">{modalMail.subject || 'No Subject'}</h3>
+                <p className="text-xs text-indigo-100 mt-1"><span className="font-medium">From:</span> {modalMail.sender || modalMail.from || 'Unknown'}{modalMail.to && <span className="ml-2"><span className="font-medium">To:</span> {Array.isArray(modalMail.to) ? modalMail.to.join(', ') : modalMail.to}</span>}</p>
+              </div>
+              <button onClick={closeMailModal} className="text-white/80 hover:text-white inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/40" aria-label="Close mail dialog">✕</button>
+            </div>
+            <div className="overflow-y-auto px-6 py-4 space-y-4 text-sm leading-relaxed">
+              {modalMail.date && (
+                <p className="text-xs text-gray-500">Received: {modalMail.date}</p>
+              )}
+              <div className="whitespace-pre-wrap font-normal text-gray-800 selection:bg-indigo-200/60">
+                {(modalMail.body || '').trim() || 'No body provided.'}
+              </div>
+              {modalMail.attachments?.length > 0 && (
+                <div className="pt-2 border-t">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Attachments</h4>
+                  <ul className="space-y-1">
+                    {modalMail.attachments.map((a, i) => (
+                      <li key={i} className="text-xs flex items-center gap-2 text-indigo-600">
+                        <span>📎</span>
+                        <span>{a.filename || a.name || 'Attachment'}</span>
+                        {a.url && <a href={a.url} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">Open</a>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-3 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={closeMailModal}
+                className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Loader show={loading} message={loadingMessage} />
       {/* Footer */}
       <footer className="fixed bottom-0 left-0 w-full bg-gray-800 text-white text-center py-3 z-50">
         © 2025 Agentic AI Assistant
