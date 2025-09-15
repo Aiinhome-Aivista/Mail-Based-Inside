@@ -8,6 +8,7 @@ import { Toast } from 'primereact/toast';
 // import { jwtDecode } from 'jwt-decode'; // (Not used currently)
 
 import Loader from '../common/Loader';
+import { requestAndRegisterFcmToken } from '../../utils/fcm';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -92,6 +93,11 @@ function Login() {
           // Persist full response so Dashboard can use access_token & name
           sessionStorage.setItem("userData", JSON.stringify(loginData));
           showSuccess(loginData.status || 'Google login successful');
+          // Register FCM token immediately after login (don't wait for refresh)
+          const email = loginData?.email || loginData?.user?.email;
+          if (email) {
+            requestAndRegisterFcmToken(email);
+          }
           // Navigate; Dashboard effect will trigger readmails with access token
           setTimeout(() => navigate('/dashboard'), 1200);
         } catch (err) {

@@ -448,9 +448,9 @@ const Dashboard = () => {
               {categoryError && !categoryLoading && (
                 <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded">{categoryError}</div>
               )}
-              {!categoryLoading && !categoryError && categoryMails.length === 0 && (
+              {/* {!categoryLoading && !categoryError && categoryMails.length === 0 && (
                 <p className="text-gray-600 text-sm">No mails found for {selectedCategory}.</p>
-              )}
+              )} */}
               {categoryMails.length > 0 && (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {categoryMails.map((m, idx) => (
