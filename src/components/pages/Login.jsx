@@ -63,6 +63,7 @@ function Login() {
       showError("Google API not loaded");
       return;
     }
+
     const tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
@@ -73,6 +74,10 @@ function Login() {
           showError("No access token received");
           return;
         }
+
+        // 👇 test in console: what scopes were granted
+        console.log("Google Access Token:", accessToken);
+
         setLoading(true);
         try {
           const loginRes = await fetch("http://122.163.121.176:3006/api/google-login", {
@@ -80,22 +85,24 @@ function Login() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ access_token: accessToken }),
           });
+
           const loginData = await loginRes.json();
           console.log("Google login response:", loginData);
+
           if (!loginRes.ok || loginData?.status !== 'Google login successful') {
             showError(loginData?.error || loginData?.status || 'Google login failed');
             setLoading(false);
             return;
           }
-          // Persist full response so Dashboard can use access_token & name
+
           sessionStorage.setItem("userData", JSON.stringify(loginData));
           showSuccess(loginData.status || 'Google login successful');
-          // Register FCM token immediately after login (don't wait for refresh)
+
           const email = loginData?.email || loginData?.user?.email;
           if (email) {
             requestAndRegisterFcmToken(email);
           }
-          // Navigate; Dashboard effect will trigger readmails with access token
+
           setTimeout(() => navigate('/dashboard'), 1200);
         } catch (err) {
           console.error('Google login error', err);
@@ -104,7 +111,9 @@ function Login() {
         }
       },
     });
-    tokenClient.requestAccessToken();
+
+    // 👇 this forces Gmail permission prompt again
+    tokenClient.requestAccessToken({ prompt: 'consent' });
   };
 
 
