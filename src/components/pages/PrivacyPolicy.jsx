@@ -8,7 +8,7 @@ export default function PrivacyPolicy() {
 
       <header className="bg-indigo-600 text-white px-4 py-3 shadow flex items-center justify-between">
         <h1 className="text-lg font-semibold">Privacy Policy</h1>
-        <a href="/" className="text-sm underline hover:no-underline">Back to Login</a>
+        {/* <a href="/" className="text-sm underline hover:no-underline">Back to Login</a> */}
       </header>
       <div className="flex-1 overflow-hidden">
         <iframe
