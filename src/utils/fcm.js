@@ -1,6 +1,6 @@
 // Centralized Firebase Cloud Messaging helper
 import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, isSupported } from 'firebase/messaging';
+import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDett0SoGzQP8puqO0x1DsPvwSZyNd4g0g",
@@ -15,6 +15,7 @@ const firebaseConfig = {
 const vapidKey = 'BDlncOKTc0exnBuydJFBKudbz8dwGZzi2UwQFLCX6lRM2q0pNpcHzlIqYBQ0wJsvdcl-6LNqw6nwAnX73U8Qyco';
 
 let messagingInstancePromise = null;
+let foregroundListenerAttached = false;
 
 async function getMessagingInstance() {
   if (!messagingInstancePromise) {
@@ -60,6 +61,35 @@ export async function requestAndRegisterFcmToken(userEmail) {
 
     sessionStorage.setItem('fcmRegisteredFor', userEmail);
     sessionStorage.setItem('fcmToken', token);
+
+    // Attach foreground listener once token ready
+    const messagingForListener = await getMessagingInstance();
+    if (messagingForListener && !foregroundListenerAttached) {
+      try {
+        onMessage(messagingForListener, (payload) => {
+          try {
+            const note = {
+              id: Date.now() + '-' + Math.random().toString(36).slice(2),
+              title: payload?.notification?.title || payload?.data?.title || 'Notification',
+              body: payload?.notification?.body || payload?.data?.body || '',
+              data: payload?.data || {},
+              receivedAt: new Date().toISOString(),
+              icon: payload?.notification?.icon || '/notif-icon.svg'
+            };
+            const existing = JSON.parse(sessionStorage.getItem('inAppNotifications') || '[]');
+            existing.unshift(note);
+            const trimmed = existing.slice(0, 20); // keep last 20
+            sessionStorage.setItem('inAppNotifications', JSON.stringify(trimmed));
+            window.dispatchEvent(new CustomEvent('fcm-notification', { detail: note }));
+          } catch (err) {
+            console.warn('Failed to store foreground notification', err);
+          }
+        });
+        foregroundListenerAttached = true;
+      } catch (e) {
+        console.warn('Failed to attach foreground onMessage listener', e);
+      }
+    }
     return token;
   } catch (e) {
     console.error('FCM registration error:', e);

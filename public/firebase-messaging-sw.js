@@ -15,4 +15,53 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Optional: customize background notification handling here if needed
+// Handle background messages (when page closed or in background)
+messaging.onBackgroundMessage(function(payload) {
+    console.log('[firebase-messaging-sw.js] onBackgroundMessage', payload);
+    const notification = payload.notification || {};
+    const data = payload.data || {};
+    const title = notification.title || data.title || 'Reminder';
+    const options = {
+        body: notification.body || data.body || 'You have a new notification.',
+        icon: notification.icon || '/src/assets/3DAvatar.png',
+        data,
+        badge: '/src/assets/3DAvatar.png',
+        vibrate: [100, 50, 100]
+    };
+    self.registration.showNotification(title, options);
+});
+
+// Fallback for raw push events (data-only messages that skip FCM handler)
+self.addEventListener('push', function(event) {
+    try {
+        const payload = event.data ? event.data.json() : {};
+        console.log('[firebase-messaging-sw.js] push event payload', payload);
+        const notification = payload.notification || {};
+        const data = payload.data || {};
+        const title = notification.title || data.title || 'Reminder';
+        const options = {
+            body: notification.body || data.body || 'You have a new notification.',
+            icon: notification.icon || '/src/assets/3DAvatar.png',
+            data,
+            badge: '/src/assets/3DAvatar.png'
+        };
+        event.waitUntil(self.registration.showNotification(title, options));
+    } catch (e) {
+        console.error('Push event error', e);
+    }
+});
+
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close();
+    const targetUrl = event.notification.data?.url || '/';
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+            for (const client of clientList) {
+                if (client.url.includes(targetUrl) && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) return clients.openWindow(targetUrl);
+        })
+    );
+});

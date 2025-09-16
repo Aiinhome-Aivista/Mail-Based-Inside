@@ -39,10 +39,16 @@ const Dashboard = () => {
   const [mailLoadingId, setMailLoadingId] = useState(null);
   const [mailModalOpen, setMailModalOpen] = useState(false);
   const [modalMail, setModalMail] = useState(null);
+  // In-app notifications
+  const [notifications, setNotifications] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('inAppNotifications') || '[]'); } catch { return []; }
+  });
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const navigate = useNavigate();
   // Guard ref to avoid duplicate fetch in React 18 StrictMode (dev) double invoke
   const initialFetchDoneRef = useRef(false);
+  const remindersSentRef = useRef(false); // ensure /send-reminders called only once per mount
   useEffect(() => {
     if (initialFetchDoneRef.current) return; // prevent second StrictMode run
     const storedData = sessionStorage.getItem("userData");
@@ -83,6 +89,68 @@ const Dashboard = () => {
       .catch((err) => console.error("API Error:", err))
       .finally(() => setLoading(false));
   }, []);
+
+  // Listen for foreground FCM notifications
+  useEffect(() => {
+    function handleIncoming(e) {
+      setNotifications(prev => {
+        const next = [e.detail, ...prev].slice(0,20);
+        try { sessionStorage.setItem('inAppNotifications', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+    window.addEventListener('fcm-notification', handleIncoming);
+    return () => window.removeEventListener('fcm-notification', handleIncoming);
+  }, []);
+
+  // After initial dashboard load completes (loading false, data present), trigger reminders
+  useEffect(() => {
+    let retryTimer;
+    const attempt = (triesLeft) => {
+      if (remindersSentRef.current) return;
+      if (loading) { // wait for loading false
+        retryTimer = setTimeout(() => attempt(triesLeft), 400);
+        return;
+      }
+      if (!initialFetchDoneRef.current || !dashboardData) { // still not initial data
+        if (triesLeft > 0) retryTimer = setTimeout(() => attempt(triesLeft - 1), 500);
+        return;
+      }
+      const email = userCreds.email || (() => {
+        try {
+          const stored = JSON.parse(sessionStorage.getItem('userData') || '{}');
+          return stored?.email || stored?.user?.email || '';
+        } catch { return ''; }
+      })();
+      if (!email) {
+        if (triesLeft > 0) retryTimer = setTimeout(() => attempt(triesLeft - 1), 600);
+        return;
+      }
+      // Ensure FCM token exists (some flows may still be generating)
+      const fcmToken = sessionStorage.getItem('fcmToken');
+      if (!fcmToken && triesLeft > 0) {
+        retryTimer = setTimeout(() => attempt(triesLeft - 1), 700);
+        return;
+      }
+      remindersSentRef.current = true;
+      console.log('Calling send-reminders with email', email, 'and fcmToken present?', !!fcmToken);
+      fetch('http://122.163.121.176:3006/send-reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_email: email })
+      }).then(async r => {
+        const text = await r.text();
+        let parsed;
+        try { parsed = JSON.parse(text); } catch { parsed = { raw: text }; }
+        if (!r.ok) throw new Error('send-reminders failed: ' + (parsed?.message || r.status));
+        console.log('send-reminders success:', parsed);
+      }).catch(err => {
+        console.warn('send-reminders error:', err);
+      });
+    };
+    attempt(5);
+    return () => clearTimeout(retryTimer);
+  }, [loading, dashboardData, userCreds.email]);
 
   // const categoryCounts = dashboardData?.summary?.category_counts || {};
   // const totalEmails = dashboardData?.summary?.total_email_count || 0;
@@ -182,7 +250,7 @@ const Dashboard = () => {
   const handleChatMessagesChange = (topicKey, msgs) => {
     setChatSessions(prev => {
       const next = { ...prev, [topicKey]: msgs };
-      try { sessionStorage.setItem('chatSessions', JSON.stringify(next)); } catch {/* ignore */}
+      try { sessionStorage.setItem('chatSessions', JSON.stringify(next)); } catch {/* ignore */ }
       return next;
     });
   };
@@ -312,6 +380,46 @@ const Dashboard = () => {
         </div>
         <div className="flex items-center space-x-3">
           <span className="font-medium">Welcome, {userName}</span>
+          {/* Notification Bell */}
+          <div className="relative">
+            <button
+              onClick={() => setNotifOpen(o=>!o)}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20 text-white focus:outline-none focus:ring-2 focus:ring-white/50 relative"
+              aria-label="Notifications"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 17h5l-1.4-1.4A2 2 0 0117 14.2V11a5 5 0 00-9.33-2.5M9 21h6m-9-4h12" />
+              </svg>
+              {notifications.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] leading-none px-1.5 py-0.5 rounded-full font-semibold">
+                  {notifications.length > 9 ? '9+' : notifications.length}
+                </span>
+              )}
+            </button>
+            {notifOpen && (
+              <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto bg-white text-gray-800 shadow-lg rounded-lg border border-gray-200 z-50">
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-indigo-600 text-white rounded-t-lg">
+                  <span className="font-medium text-sm">Notifications</span>
+                  <button onClick={() => { setNotifications([]); sessionStorage.removeItem('inAppNotifications'); }} className="text-xs bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded">Clear</button>
+                </div>
+                {notifications.length === 0 && (
+                  <div className="p-4 text-sm text-gray-500">No notifications yet.</div>
+                )}
+                {notifications.map(n => (
+                  <div key={n.id} className="px-4 py-2 border-b last:border-b-0 hover:bg-gray-50 text-sm">
+                    <div className="flex items-start gap-2">
+                      <img src={n.icon || '/notif-icon.svg'} alt="icon" className="w-8 h-8 rounded-full object-cover bg-indigo-100 flex-shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-800 truncate" title={n.title}>{n.title}</p>
+                        {n.body && <p className="text-gray-600 text-xs line-clamp-2 whitespace-pre-wrap">{n.body}</p>}
+                        <p className="text-[10px] text-gray-400 mt-1">{new Date(n.receivedAt).toLocaleTimeString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={handleReload}
             className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20 text-white focus:outline-none focus:ring-2 focus:ring-white/50"
