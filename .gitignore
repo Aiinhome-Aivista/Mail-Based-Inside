@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 *.json
 *.env
+
+# Firebase service account key (was accidentally committed previously and will be purged from history)
+agenticemailtool-firebase-adminsdk-fbsvc-229f4d0643.json
