@@ -41,9 +41,14 @@ const Dashboard = () => {
   const [modalMail, setModalMail] = useState(null);
   // In-app notifications
   const [notifications, setNotifications] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('inAppNotifications') || '[]'); } catch { return []; }
+    try {
+      const raw = JSON.parse(sessionStorage.getItem('inAppNotifications') || '[]');
+      return Array.isArray(raw) ? raw.map(n => ({ read: false, ...n })) : [];
+    } catch { return []; }
   });
   const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   const navigate = useNavigate();
   // Guard ref to avoid duplicate fetch in React 18 StrictMode (dev) double invoke
@@ -94,14 +99,34 @@ const Dashboard = () => {
   useEffect(() => {
     function handleIncoming(e) {
       setNotifications(prev => {
-        const next = [e.detail, ...prev].slice(0,20);
-        try { sessionStorage.setItem('inAppNotifications', JSON.stringify(next)); } catch {}
+        const next = [e.detail, ...prev].slice(0, 20);
+        try { sessionStorage.setItem('inAppNotifications', JSON.stringify(next)); } catch { }
         return next;
       });
     }
     window.addEventListener('fcm-notification', handleIncoming);
     return () => window.removeEventListener('fcm-notification', handleIncoming);
   }, []);
+
+  // Close notifications on outside click
+  useEffect(() => {
+    if (!notifOpen) return;
+    function handleClick(e) {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
+      }
+    }
+    window.addEventListener('mousedown', handleClick);
+    return () => window.removeEventListener('mousedown', handleClick);
+  }, [notifOpen]);
+
+  const toggleRead = (id) => {
+    setNotifications(prev => {
+      const next = prev.map(n => n.id === id ? { ...n, read: !n.read } : n);
+      try { sessionStorage.setItem('inAppNotifications', JSON.stringify(next)); } catch { }
+      return next;
+    });
+  };
 
   // After initial dashboard load completes (loading false, data present), trigger reminders
   useEffect(() => {
@@ -381,18 +406,18 @@ const Dashboard = () => {
         <div className="flex items-center space-x-3">
           <span className="font-medium">Welcome, {userName}</span>
           {/* Notification Bell */}
-          <div className="relative">
+          <div className="relative" ref={notifRef}>
             <button
-              onClick={() => setNotifOpen(o=>!o)}
+              onClick={() => setNotifOpen(o => !o)}
               className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20 text-white focus:outline-none focus:ring-2 focus:ring-white/50 relative"
               aria-label="Notifications"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14 17h5l-1.4-1.4A2 2 0 0117 14.2V11a5 5 0 00-9.33-2.5M9 21h6m-9-4h12" />
               </svg>
-              {notifications.length > 0 && (
+              {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] leading-none px-1.5 py-0.5 rounded-full font-semibold">
-                  {notifications.length > 9 ? '9+' : notifications.length}
+                  {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
             </button>
@@ -406,11 +431,20 @@ const Dashboard = () => {
                   <div className="p-4 text-sm text-gray-500">No notifications yet.</div>
                 )}
                 {notifications.map(n => (
-                  <div key={n.id} className="px-4 py-2 border-b last:border-b-0 hover:bg-gray-50 text-sm">
+                  <div key={n.id} className={`px-4 py-2 border-b last:border-b-0 text-sm transition ${!n.read ? 'hover:bg-gray-50' : 'opacity-60 hover:opacity-70'}`}>
                     <div className="flex items-start gap-2">
-                      <img src={n.icon || '/notif-icon.svg'} alt="icon" className="w-8 h-8 rounded-full object-cover bg-indigo-100 flex-shrink-0" />
+                      <img src={n.icon || '/src/assets/3DAvatar.png'} alt="icon" className="w-8 h-8 rounded-full object-cover bg-indigo-100 flex-shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-800 truncate" title={n.title}>{n.title}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-gray-800 truncate" title={n.title}>{n.title}</p>
+                          <button
+                            onClick={() => toggleRead(n.id)}
+                            className={`text-xs rounded px-1.5 py-0.5 border ${n.read ? 'bg-green-100 border-green-300 text-green-700' : 'bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200'}`}
+                            title={n.read ? 'Mark unread' : 'Mark read'}
+                          >
+                            {n.read ? '✔✔' : '✔'}
+                          </button>
+                        </div>
                         {n.body && <p className="text-gray-600 text-xs line-clamp-2 whitespace-pre-wrap">{n.body}</p>}
                         <p className="text-[10px] text-gray-400 mt-1">{new Date(n.receivedAt).toLocaleTimeString()}</p>
                       </div>
@@ -630,8 +664,12 @@ const Dashboard = () => {
       )}
       <Loader show={loading} message={loadingMessage} />
       {/* Footer */}
-      <footer className="fixed bottom-0 left-0 w-full bg-gray-800 text-white text-center py-3 z-50">
-        © 2025 Agentic AI Assistant
+      <footer className="fixed bottom-0 left-0 w-full bg-gray-800 text-white text-center py-3 z-50 text-sm flex flex-col sm:flex-row items-center justify-center gap-2">
+        <span>© 2025 Agentic AI Assistant</span>
+        <button
+          onClick={() => navigate('/privacy-policy')}
+          className="underline hover:no-underline text-indigo-300 hover:text-indigo-200"
+        >Privacy Policy</button>
       </footer>
     </div>
   );

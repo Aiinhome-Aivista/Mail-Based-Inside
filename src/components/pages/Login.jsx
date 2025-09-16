@@ -30,10 +30,7 @@ function Login() {
       return;
     }
 
-    const payload = {
-      email,
-      password,
-    };
+    const payload = { email,password};
 
     try {
       setLoading(true);

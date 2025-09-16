@@ -74,7 +74,8 @@ export async function requestAndRegisterFcmToken(userEmail) {
               body: payload?.notification?.body || payload?.data?.body || '',
               data: payload?.data || {},
               receivedAt: new Date().toISOString(),
-              icon: payload?.notification?.icon || '/notif-icon.svg'
+              icon: payload?.notification?.icon || '/src/assets/3DAvatar.png',
+              read: false
             };
             const existing = JSON.parse(sessionStorage.getItem('inAppNotifications') || '[]');
             existing.unshift(note);
