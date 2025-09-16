@@ -666,10 +666,12 @@ const Dashboard = () => {
       {/* Footer */}
       <footer className="fixed bottom-0 left-0 w-full bg-gray-800 text-white text-center py-3 z-50 text-sm flex flex-col sm:flex-row items-center justify-center gap-2">
         <span>© 2025 Agentic AI Assistant</span>
-        <button
-          onClick={() => navigate('/privacy-policy')}
+        <a
+          href="/privacy-policy"
+          target="_blank"
+          rel="noopener noreferrer"
           className="underline hover:no-underline text-indigo-300 hover:text-indigo-200"
-        >Privacy Policy</button>
+        >Privacy Policy</a>
       </footer>
     </div>
   );
