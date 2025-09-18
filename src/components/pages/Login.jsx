@@ -116,6 +116,72 @@ function Login() {
     tokenClient.requestAccessToken({ prompt: 'consent' });
   };
 
+  const handleGoogleLoginSuccess_s = () => {
+  if (!(window.google && window.google.accounts && window.google.accounts.oauth2)) {
+    showError("Google API not loaded");
+    return;
+  }
+
+  const tokenClient = window.google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
+    prompt: 'consent', // 🔑 forces Gmail permission popup every time
+    callback: async (response) => {
+      const accessToken = response.access_token;
+      if (!accessToken) {
+        showError("No access token received");
+        return;
+      }
+
+      // 🔍 Check what scopes are actually in the token
+      try {
+        const tokenInfoRes = await fetch(
+          `https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${accessToken}`
+        );
+        const tokenInfo = await tokenInfoRes.json();
+        console.log("Token info:", tokenInfo);
+
+        if (!tokenInfo?.scope?.includes("gmail.readonly")) {
+          showError("Gmail permission was not granted. Please allow access.");
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not verify token scopes", err);
+      }
+
+      setLoading(true);
+      try {
+        const loginRes = await fetch("http://122.163.121.176:3006/api/google-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: accessToken }),
+        });
+
+        const loginData = await loginRes.json();
+        console.log("Google login response:", loginData);
+
+        if (!loginRes.ok || loginData?.status !== 'Google login successful') {
+          showError(loginData?.error || loginData?.status || 'Google login failed');
+          setLoading(false);
+          return;
+        }
+
+        // ✅ Persist for Dashboard usage
+        sessionStorage.setItem("userData", JSON.stringify(loginData));
+        showSuccess(loginData.status || 'Google login successful');
+
+        setTimeout(() => navigate('/dashboard'), 1200);
+      } catch (err) {
+        console.error('Google login error', err);
+        showError('Google login failed');
+        setLoading(false);
+      }
+    },
+  });
+
+  // 🔑 Force Google to show consent popup every time
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+};
 
   const handleGoogleLoginError = () => {
     showError("Google Login failed");
